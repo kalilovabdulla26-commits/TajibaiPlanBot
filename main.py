@@ -15,17 +15,21 @@ from PIL import Image, ImageDraw, ImageFont
 API_TOKEN = '8388259014:AAFlyJXykZUZRBWSmiBZsCFlgIhQsnCLCWo'
 ADMIN_IDS = [5689542074, 5148336517]
 PLANS_FILE = "pending_plans.json"
-FONT_PATH = "arial.ttf" # GitHub'га жүктөлгөн файлдын аты так ушундай болсун
+# GitHub'дагы файлдын аты так ушундай болушу керек (баш тамга менен)
+FONT_PATH = "Arial.ttf" 
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- ПЛАНДАРДЫ САКТОО ---
+# --- ПЛАНДАРДЫ ФАЙЛГА САКТОО ---
+# Бул функция бот өчүп күйсө да пландарды жоготпойт
 def load_plans():
     if os.path.exists(PLANS_FILE):
-        with open(PLANS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(PLANS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: return {}
     return {}
 
 def save_plans(plans):
@@ -35,28 +39,32 @@ def save_plans(plans):
 def get_kg_time():
     return datetime.utcnow() + timedelta(hours=6)
 
-# --- ШТАМП БАСУУ ---
+# --- ШТАМП БАСУУ ФУНКЦИЯСЫ ---
 def add_stamp_and_date(image_bytes):
     try:
         main_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         base_w, base_h = main_img.size
+        # Штамптын өлчөмү сүрөткө жараша
         s_w, s_h = int(base_w * 0.45), int(base_w * 0.45 * 0.5)
         stamp_canvas = Image.new('RGBA', (s_w, s_h), (0, 0, 0, 0))
         draw_s = ImageDraw.Draw(stamp_canvas)
-        stamp_color = (26, 26, 140, 255)
+        stamp_color = (26, 26, 140, 255) # Көк түс
         
+        # Штамптын чеги (рамка)
         draw_s.rectangle([0, 0, s_w, s_h], outline=stamp_color, width=max(4, int(s_w*0.02)))
         
-        # Эгер шрифт папкада болсо, аны колдонот
+        # Шрифтти жүктөө (сенин Arial.ttf файлыңды колдонот)
         if os.path.exists(FONT_PATH):
-            f_main = ImageFont.truetype(FONT_PATH, int(s_h * 0.14))
+            f_main = ImageFont.truetype(FONT_PATH, int(s_h * 0.16))
             f_sub = ImageFont.truetype(FONT_PATH, int(s_h * 0.10))
             f_date = ImageFont.truetype(FONT_PATH, int(s_h * 0.09))
         else:
-            # Шрифт жок болсо, стандарттык шрифтти колдонот (кыргызча квадрат болушу мүмкүн)
+            logging.error(f"КАТА: {FONT_PATH} файлы табылган жок!")
             f_main = f_sub = f_date = ImageFont.load_default()
 
-        txt1, txt2, txt3 = "ЭЛЕКТРОНДУК ТҮРДӨ", "ТЕКШЕРИЛДИ", "ОББ: ТОКТОМАМАТОВА.А"
+        txt1 = "ЭЛЕКТРОНДУК ТҮРДӨ"
+        txt2 = "ТЕКШЕРИЛДИ"
+        txt3 = "ОББ: ТОКТОМАМАТОВА.А"
         date_txt = get_kg_time().strftime("%d.%m.%Y | %H:%M")
 
         def draw_c(text, font, y_pct):
@@ -67,6 +75,7 @@ def add_stamp_and_date(image_bytes):
         draw_c(txt2, f_main, 0.40)
         draw_c(txt3, f_sub, 0.70)
         
+        # Штампты негизги сүрөткө чаптоо
         main_img.paste(stamp_canvas, (base_w - s_w - 50, base_h - s_h - 100), stamp_canvas)
         draw_m = ImageDraw.Draw(main_img)
         draw_m.text((base_w - s_w - 30, base_h - 95), date_txt, fill=stamp_color, font=f_date)
@@ -78,7 +87,7 @@ def add_stamp_and_date(image_bytes):
     except Exception as e:
         return None, str(e)
 
-# --- ХЕНДЛЕРЛЕР ---
+# --- БОТТУН ХЕНДЛЕРЛЕРИ ---
 user_states = {}
 
 @dp.message(Command("start"))
@@ -115,8 +124,9 @@ async def handle_name(m: types.Message):
 async def approve(c: types.CallbackQuery):
     pid = c.data.split("_")[1]
     plans = load_plans()
+    
     if pid not in plans:
-        return await c.answer("Ката: План табылган жок же эскирди.", show_alert=True)
+        return await c.answer("Бул план базадан өчүрүлгөн же эскирген.", show_alert=True)
     
     await c.answer("Штамп басылууда...")
     p = plans[pid]
@@ -131,11 +141,13 @@ async def approve(c: types.CallbackQuery):
     else:
         await c.answer(f"Ката: {err}", show_alert=True)
     
+    # Текшерилгенден кийин тизмеден өчүрөбүз
     del plans[pid]
     save_plans(plans)
 
 async def main():
-    await bot.delete_webhook(drop_pending_updates=True) # Конфликтти токтотуу
+    # Бот иштегенде эски конфликттерди тазалайт
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

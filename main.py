@@ -52,6 +52,21 @@ def log_to_sheet(teacher_name, status):
 
 # --- ШТАМП БАСУУ ФУНКЦИЯСЫ ---
 def add_stamp_and_date(image_bytes):
+    # Шрифтерди жүктөө (Linux үчүн стандарттык шрифтти тандадык)
+        try:
+            # Render (Linux) серверинде кириллицаны колдогон шрифттин жолу
+            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+            
+            # Эгерде бул шрифт жок болсо, башка шрифтти текшерет
+            if not os.path.exists(font_path):
+                font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+                
+            f_main = ImageFont.truetype(font_path, int(s_h * 0.18))
+            f_sub = ImageFont.truetype(font_path, int(s_h * 0.14))
+            f_date = ImageFont.truetype(font_path, int(s_h * 0.12))
+        except:
+            # Эгер бир дагы шрифт табылбаса, демейки шрифтти колдонот
+            f_main = f_sub = f_date = ImageFont.load_default()
     try:
         main_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         base_w, base_h = main_img.size

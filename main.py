@@ -81,13 +81,16 @@ def add_stamp_and_date(image_bytes):
         
         draw_s.rectangle([0, 0, s_w, s_h], outline=stamp_color, width=max(4, int(s_w*0.02)))
         
-        try:
+        # Эми бот шрифтти папканын ичинен түздөн-түз табат
+        if os.path.exists(FONT_PATH):
             f_main = ImageFont.truetype(FONT_PATH, int(s_h * 0.15))
             f_sub = ImageFont.truetype(FONT_PATH, int(s_h * 0.11))
             f_date = ImageFont.truetype(FONT_PATH, int(s_h * 0.09))
-        except:
+        else:
+            logging.error(f"КАТА: {FONT_PATH} файлы табылган жок!")
             f_main = f_sub = f_date = ImageFont.load_default()
 
+        # Жазуулар эми так чыгат
         txt1, txt2, txt3 = "ЭЛЕКТРОНДУК ТҮРДӨ", "ТЕКШЕРИЛДИ", "ОББ: ТОКТОМАМАТОВА.А"
         date_txt = get_kg_time().strftime("%d.%m.%Y | %H:%M")
 

@@ -15,11 +15,11 @@ from PIL import Image, ImageDraw, ImageFont
 
 # --- ЖӨНДӨӨЛӨР ---
 API_TOKEN = '8388259014:AAFlyJXykZUZRBWSmiBZsCFlgIhQsnCLCWo'
-# Эки админдин ID номерлери бул жерде:
 ADMIN_IDS = [5689542074, 5148336517] 
 SPREADSHEET_ID = '1g74mCtl8zqbcDCJ306q4eoPWJXwOnEdpOTMAj8_cPcU'
 USERS_FILE = "users.json"
 
+# Пландарды эс тутумда сактоо
 pending_plans = {}
 user_states = {}
 
@@ -48,14 +48,11 @@ def log_to_sheet(teacher_name, status):
         json_creds = os.environ.get('GOOGLE_JSON')
         if not json_creds: return
         info = json.loads(json_creds)
-        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(info, scopes=scope)
+        creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-        now = get_kg_time().strftime("%d.%m.%Y %H:%M")
-        sheet.append_row([now, teacher_name, status])
-    except Exception as e:
-        logging.error(f"Sheet error: {e}")
+        sheet.append_row([get_kg_time().strftime("%d.%m.%Y %H:%M"), teacher_name, status])
+    except Exception as e: logging.error(f"Sheet error: {e}")
 
 def add_stamp_and_date(image_bytes):
     try:
@@ -80,15 +77,11 @@ def add_stamp_and_date(image_bytes):
         date_txt = get_kg_time().strftime("%d.%m.%Y | %H:%M")
 
         def draw_c(text, font, y_pct):
-            try:
-                w = draw_s.textbbox((0, 0), text, font=font)[2]
+            try: w = draw_s.textbbox((0, 0), text, font=font)[2]
             except: w = len(text) * 7
             draw_s.text(((s_w - w) / 2, int(s_h * y_pct)), text, fill=stamp_color, font=font)
 
-        draw_c(txt1, f_sub, 0.18)
-        draw_c(txt2, f_main, 0.42)
-        draw_c(txt3, f_sub, 0.72)
-        
+        draw_c(txt1, f_sub, 0.18); draw_c(txt2, f_main, 0.42); draw_c(txt3, f_sub, 0.72)
         main_img.paste(stamp_canvas, (base_w - s_w - 50, base_h - s_h - 100), stamp_canvas)
         draw_m = ImageDraw.Draw(main_img)
         draw_m.text((base_w - s_w - 30, base_h - 95), date_txt, fill=stamp_color, font=f_date)
@@ -97,28 +90,13 @@ def add_stamp_and_date(image_bytes):
         main_img.convert("RGB").save(out, format="JPEG", quality=95)
         out.seek(0)
         return out, None
-    except Exception as e:
-        return None, str(e)
+    except Exception as e: return None, str(e)
 
 # --- ХЕНДЛЕРЛЕР ---
 @dp.message(Command("start"))
 async def start(m: types.Message):
     save_user(m.from_user.id)
     await m.answer("Салам! Пландын сүрөтүн жөнөтүңүз.")
-
-@dp.message(Command("send"), F.from_user.id.in_(ADMIN_IDS))
-async def broadcast(m: types.Message):
-    msg = m.text.replace("/send", "").strip()
-    if not msg: return await m.answer("Текст жазыңыз!")
-    users = get_users()
-    count = 0
-    for u in users:
-        try:
-            await bot.send_message(u, msg)
-            count += 1
-            await asyncio.sleep(0.05)
-        except: pass
-    await m.answer(f"Жөнөтүлдү: {count}")
 
 @dp.message(F.photo)
 async def handle_photo(m: types.Message):
@@ -133,16 +111,17 @@ async def handle_name(m: types.Message):
         name = m.text
         pid = str(uuid.uuid4())[:8]
         pending_plans[pid] = {'file_id': user_states[uid]['photo'], 'user_id': uid, 'name': name}
+        
         builder = InlineKeyboardBuilder()
         builder.add(InlineKeyboardButton(text="✅ Макул", callback_data=f"ok_{pid}"))
         builder.add(InlineKeyboardButton(text="❌ Жок", callback_data=f"no_{pid}"))
         
-        # Билдирүүнү бардык админдерге жөнөтүү
+        # Эки админге тең жиберүү
         for admin_id in ADMIN_IDS:
             try:
                 await bot.send_photo(admin_id, photo=user_states[uid]['photo'], 
                                      caption=f"📩 Жаңы план: {name}", reply_markup=builder.as_markup())
-            except: pass
+            except Exception as e: logging.error(f"Admin send error: {e}")
             
         await m.answer(f"Рахмат, {name}! План текшерүүгө жиберилди.")
         del user_states[uid]
@@ -150,21 +129,22 @@ async def handle_name(m: types.Message):
 @dp.callback_query(F.data.startswith("ok_"))
 async def approve(c: types.CallbackQuery):
     pid = c.data.split("_")[1]
-    if pid in pending_plans:
-        p = pending_plans[pid]
-        await c.answer("Штамп басылууда...")
-        
-        file = await bot.get_file(p['file_id'])
-        content = await bot.download_file(file.file_path)
-        img_out, err = add_stamp_and_date(content.read())
-        
-        if img_out:
-            await bot.send_photo(p['user_id'], photo=BufferedInputFile(img_out.read(), filename="res.jpg"), caption="✅ Планыңыз кабыл алынды!")
-            await c.message.edit_caption(caption=f"✅ {p['name']} - Кабыл алынды.")
-            log_to_sheet(p['name'], "Кабыл алынды")
-        else:
-            await c.message.answer(f"Ката: {err}")
-        del pending_plans[pid]
+    if pid not in pending_plans:
+        return await c.answer("Ката: Бул план базада жок же эскирип калган.", show_alert=True)
+    
+    await c.answer("Иштетилип жатат...")
+    p = pending_plans[pid]
+    file = await bot.get_file(p['file_id'])
+    content = await bot.download_file(file.file_path)
+    img_out, err = add_stamp_and_date(content.read())
+    
+    if img_out:
+        await bot.send_photo(p['user_id'], photo=BufferedInputFile(img_out.read(), filename="res.jpg"), caption="✅ Планыңыз кабыл алынды!")
+        await c.message.edit_caption(caption=f"✅ {p['name']} - Кабыл алынды.")
+        log_to_sheet(p['name'], "Кабыл алынды")
+    else:
+        await c.message.answer(f"Штамп басууда ката: {err}")
+    del pending_plans[pid]
 
 @dp.callback_query(F.data.startswith("no_"))
 async def reject(c: types.CallbackQuery):
@@ -176,6 +156,20 @@ async def reject(c: types.CallbackQuery):
         await c.message.edit_caption(caption=f"❌ {p['name']} - Четке кагылды.")
         log_to_sheet(p['name'], "Четке кагылды")
         del pending_plans[pid]
+
+@dp.message(Command("send"), F.from_user.id.in_(ADMIN_IDS))
+async def broadcast(m: types.Message):
+    msg = m.text.replace("/send", "").strip()
+    if not msg: return await m.answer("Текст жазыңыз!")
+    users = get_users()
+    count = 0
+    for u in users:
+        try:
+            await bot.send_message(u, msg)
+            count += 1
+            await asyncio.sleep(0.05)
+        except: pass
+    await m.answer(f"Жөнөтүлдү: {count}")
 
 async def main():
     await dp.start_polling(bot)

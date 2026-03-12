@@ -5,6 +5,7 @@ import io
 import uuid
 import json
 import gspread
+import requests
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -18,6 +19,18 @@ API_TOKEN = '8388259014:AAFlyJXykZUZRBWSmiBZsCFlgIhQsnCLCWo'
 ADMIN_IDS = [5689542074, 5148336517] 
 SPREADSHEET_ID = '1g74mCtl8zqbcDCJ306q4eoPWJXwOnEdpOTMAj8_cPcU'
 USERS_FILE = "users.json"
+FONT_PATH = "arial_kg.ttf"
+
+# Шрифтти интернеттен жүктөө (эгер жок болсо)
+def download_font():
+    if not os.path.exists(FONT_PATH):
+        url = "https://github.com/google/fonts/raw/main/ofl/arimo/Arimo%5Bwght%5D.ttf"
+        r = requests.get(url)
+        with open(FONT_PATH, "wb") as f:
+            f.write(r.content)
+        logging.info("Шрифт ийгиликтүү жүктөлдү.")
+
+download_font()
 
 pending_plans = {}
 user_states = {}
@@ -26,34 +39,9 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- ФУНКЦИЯЛАР ---
-def get_users():
-    if not os.path.exists(USERS_FILE): return []
-    try:
-        with open(USERS_FILE, "r") as f: return json.load(f)
-    except: return []
-
-def save_user(user_id):
-    users = get_users()
-    if user_id not in users:
-        users.append(user_id)
-        with open(USERS_FILE, "w") as f: json.dump(users, f)
-
 def get_kg_time():
     return datetime.utcnow() + timedelta(hours=6)
 
-def log_to_sheet(teacher_name, status):
-    try:
-        json_creds = os.environ.get('GOOGLE_JSON')
-        if not json_creds: return
-        info = json.loads(json_creds)
-        creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-        sheet.append_row([get_kg_time().strftime("%d.%m.%Y %H:%M"), teacher_name, status])
-    except Exception as e: logging.error(f"Sheet error: {e}")
-
-# ОҢДОЛГОН ШТАМП ФУНКЦИЯСЫ (ШРИФТ МЕНЕН)
 def add_stamp_and_date(image_bytes):
     try:
         main_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
@@ -65,28 +53,20 @@ def add_stamp_and_date(image_bytes):
         
         draw_s.rectangle([0, 0, s_w, s_h], outline=stamp_color, width=max(3, int(s_w*0.02)))
         
-        # СЕНИН ПАПКАҢДАГЫ ШРИФТТИ КОЛДОНУУ
-        # Шрифттин атын өзүң жүктөгөн файлга жараша өзгөрт (мисалы: "arial.ttf")
-        font_name = "arial.ttf" 
-        
-        if os.path.exists(font_name):
-            f_main = ImageFont.truetype(font_name, int(s_h * 0.14))
-            f_sub = ImageFont.truetype(font_name, int(s_h * 0.10))
-            f_date = ImageFont.truetype(font_name, int(s_h * 0.09))
-        else:
-            logging.warning("Шрифт табылган жок! Стандарттык колдонулат.")
+        # Жүктөлгөн шрифтти колдонуу
+        try:
+            f_main = ImageFont.truetype(FONT_PATH, int(s_h * 0.14))
+            f_sub = ImageFont.truetype(FONT_PATH, int(s_h * 0.10))
+            f_date = ImageFont.truetype(FONT_PATH, int(s_h * 0.09))
+        except:
             f_main = f_sub = f_date = ImageFont.load_default()
 
-        txt1 = "ЭЛЕКТРОНДУК ТҮРДӨ"
-        txt2 = "ТЕКШЕРИЛДИ"
-        txt3 = "ОББ: ТОКТОМАМАТОВА.А"
+        txt1, txt2, txt3 = "ЭЛЕКТРОНДУК ТҮРДӨ", "ТЕКШЕРИЛДИ", "ОББ: ТОКТОМАМАТОВА.А"
         date_txt = get_kg_time().strftime("%d.%m.%Y | %H:%M")
 
         def draw_c(text, font, y_pct):
-            try:
-                w = draw_s.textbbox((0, 0), text, font=font)[2]
-            except:
-                w = len(text) * 8
+            try: w = draw_s.textbbox((0, 0), text, font=font)[2]
+            except: w = len(text) * 8
             draw_s.text(((s_w - w) / 2, int(s_h * y_pct)), text, fill=stamp_color, font=font)
 
         draw_c(txt1, f_sub, 0.15)
@@ -102,7 +82,6 @@ def add_stamp_and_date(image_bytes):
         out.seek(0)
         return out, None
     except Exception as e: return None, str(e)
-
 # --- ХЕНДЛЕРЛЕР ---
 @dp.message(Command("start"))
 async def start(m: types.Message):

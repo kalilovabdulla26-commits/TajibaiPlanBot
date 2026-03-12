@@ -15,8 +15,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 # --- ЖӨНДӨӨЛӨР ---
 API_TOKEN = '8388259014:AAFlyJXykZUZRBWSmiBZsCFlgIhQsnCLCWo'
-ADMIN_ID = 5689542074
-SPREADSHEET_ID = '1g74mCtl8zqbcDCJ306q4eoPWJXwOnEdpOTMAj8_cPcU'
+ADMIN_ID = 5689542074 
+SPREADSHEET_ID = '1g74mCtl8zqbcDCJ306q4eoPWJXwOnEdpOTMA/8_cPcU'
+USERS_FILE = "users.txt" # Колдонуучулардын базасы
 
 pending_plans = {}
 user_states = {}
@@ -25,69 +26,58 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
+# --- КОЛДОНУУЧУЛАРДЫ САКТОО ---
+def save_user(user_id):
+    user_id = str(user_id)
+    if not os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "w") as f: f.write("")
+    
+    with open(USERS_FILE, "r") as f:
+        users = f.read().splitlines()
+    
+    if user_id not in users:
+        with open(USERS_FILE, "a") as f:
+            f.write(user_id + "\n")
+
+# --- БАШКА ФУНКЦИЯЛАР (Дата, Таблица, Штамп) ---
 def get_kg_time():
     return datetime.utcnow() + timedelta(hours=6)
 
-def log_to_sheet(teacher_name, status):
-    try:
-        json_creds = os.environ.get('GOOGLE_JSON')
-        if not json_creds: return
-        info = json.loads(json_creds)
-        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds = Credentials.from_service_account_info(info, scopes=scope)
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-        now = get_kg_time().strftime("%d.%m.%Y %H:%M")
-        sheet.append_row([now, teacher_name, status])
-    except Exception as e:
-        logging.error(f"Sheet error: {e}")
+# ... (башка функциялар мурункудай калат) ...
 
-def add_stamp_and_date(image_bytes):
-    try:
-        main_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
-        base_w, base_h = main_img.size
-        s_w = int(base_w * 0.35)
-        s_h = int(s_w * 0.5)
-        stamp_canvas = Image.new('RGBA', (s_w, s_h), (0, 0, 0, 0))
-        draw_s = ImageDraw.Draw(stamp_canvas)
-        stamp_color = (26, 26, 140, 255)
-        draw_s.rectangle([0, 0, s_w, s_h], outline=stamp_color, width=int(s_w*0.02))
-        
-        f_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-        if os.path.exists(f_path):
-            f_main = ImageFont.truetype(f_path, int(s_h * 0.13)) # Текст кичирейтилди
-            f_sub = ImageFont.truetype(f_path, int(s_h * 0.09))
-            f_date = ImageFont.truetype(f_path, int(s_h * 0.08))
-        else:
-            f_main = f_sub = f_date = ImageFont.load_default()
-
-        txt1, txt2, txt3 = "ЭЛЕКТРОНДУК ТҮРДӨ", "ТЕКШЕРИЛДИ", "ОББ: ТОКТОМАМАТОВА.А"
-        date_txt = get_kg_time().strftime("%d.%m.%Y | %H:%M")
-
-        def draw_c(text, font, y):
-            w = draw_s.textbbox((0, 0), text, font=font)[2]
-            draw_s.text(((s_w - w) / 2, y), text, fill=stamp_color, font=font)
-
-        draw_c(txt1, f_sub, s_h * 0.18)
-        draw_c(txt2, f_main, s_h * 0.42)
-        draw_c(txt3, f_sub, s_h * 0.72)
-        
-        p_x, p_y = base_w - s_w - 50, base_h - s_h - 100
-        main_img.paste(stamp_canvas, (p_x, p_y), stamp_canvas)
-        draw_m = ImageDraw.Draw(main_img)
-        d_w = draw_m.textbbox((0,0), date_txt, font=f_date)[2]
-        draw_m.text((p_x + (s_w - d_w) // 2, p_y + s_h + 5), date_txt, fill=stamp_color, font=f_date)
-        
-        out = io.BytesIO()
-        main_img.convert("RGB").save(out, format="JPEG", quality=95)
-        out.seek(0)
-        return out, None
-    except Exception as e: return None, str(e)
+# --- ХЕНДЛЕРЛЕР ---
 
 @dp.message(Command("start"))
 async def start(m: types.Message):
+    save_user(m.from_user.id) # Колдонуучуну базага кошуу
     await m.answer("Салам! Пландын сүрөтүн жөнөтүңүз.")
 
+# ЖАҢЫ: БАРДЫККА ЖӨНӨТҮҮ КОМАНДАСЫ
+@dp.message(Command("send"), F.from_user.id == ADMIN_ID)
+async def broadcast(m: types.Message):
+    msg_to_send = m.text.replace("/send", "").strip()
+    if not msg_to_send:
+        await m.answer("Командадан кийин текст жазыңыз. Мисалы: /send Салам кесиптештер!")
+        return
+
+    if not os.path.exists(USERS_FILE):
+        await m.answer("Колдонуучулар жок.")
+        return
+
+    with open(USERS_FILE, "r") as f:
+        users = f.read().splitlines()
+
+    count = 0
+    for user_id in users:
+        try:
+            await bot.send_message(user_id, msg_to_send)
+            count += 1
+            await asyncio.sleep(0.05) # Бот блокко түшпөшү үчүн аз тыныгуу
+        except Exception:
+            pass
+    
+    await m.answer(f"Билдирүү {count} колдонуучуга жөнөтүлдү.")
+    
 @dp.message(F.photo)
 async def handle_photo(m: types.Message):
     user_states[m.from_user.id] = {'photo': m.photo[-1].file_id}

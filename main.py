@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 # --- ЖӨНДӨӨЛӨР ---
 API_TOKEN = '8388259014:AAFlyJXykZUZRBWSmiBZsCFlgIhQsnCLCWo'
-ADMIN_ID = 5148336517
+ADMIN_ID = 5689542074
 SPREADSHEET_ID = '1g74mCtl8zqbcDCJ306q4eoPWJXwOnEdpOTMAj8_cPcU'
 
 pending_plans = {}

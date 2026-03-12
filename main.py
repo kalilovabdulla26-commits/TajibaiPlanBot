@@ -50,19 +50,19 @@ def add_stamp_and_date(image_bytes):
     try:
         main_img = Image.open(io.BytesIO(image_bytes)).convert("RGBA")
         base_w, base_h = main_img.size
-        s_w = int(base_w * 0.35) # Штампты бир аз чоңойттук
+        s_w = int(base_w * 0.35)
         s_h = int(s_w * 0.5)
         stamp_canvas = Image.new('RGBA', (s_w, s_h), (0, 0, 0, 0))
         draw_s = ImageDraw.Draw(stamp_canvas)
         stamp_color = (26, 26, 140, 255)
         draw_s.rectangle([0, 0, s_w, s_h], outline=stamp_color, width=int(s_w*0.02))
         
-        # Шрифтти кичирейтүү (0.12, 0.10) - батышы үчүн
+        # Шрифт жолу жана өлчөмдөрү (кичирейтилди)
         f_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
         if os.path.exists(f_path):
-            f_main = ImageFont.truetype(f_path, int(s_h * 0.15))
-            f_sub = ImageFont.truetype(f_path, int(s_h * 0.11))
-            f_date = ImageFont.truetype(f_path, int(s_h * 0.10))
+            f_main = ImageFont.truetype(f_path, int(s_h * 0.14)) # 0.18ден 0.14кө
+            f_sub = ImageFont.truetype(f_path, int(s_h * 0.10))  # 0.14төн 0.10го
+            f_date = ImageFont.truetype(f_path, int(s_h * 0.09)) # 0.12ден 0.09га
         else:
             f_main = f_sub = f_date = ImageFont.load_default()
 
@@ -73,14 +73,15 @@ def add_stamp_and_date(image_bytes):
             w = draw_s.textbbox((0, 0), text, font=font)[2]
             draw_s.text(((s_w - w) / 2, y), text, fill=stamp_color, font=font)
 
-        draw_c(txt1, f_sub, s_h * 0.15)
-        draw_c(txt2, f_main, s_h * 0.40)
-        draw_c(txt3, f_sub, s_h * 0.70)
+        draw_c(txt1, f_sub, s_h * 0.18)
+        draw_c(txt2, f_main, s_h * 0.42)
+        draw_c(txt3, f_sub, s_h * 0.72)
         
         p_x, p_y = base_w - s_w - 50, base_h - s_h - 100
         main_img.paste(stamp_canvas, (p_x, p_y), stamp_canvas)
         draw_m = ImageDraw.Draw(main_img)
-        d_w = draw_m.textbbox((0,0), date_txt, font=f_date)[2]
+        d_bbox = draw_m.textbbox((0,0), date_txt, font=f_date)
+        d_w = d_bbox[2] - d_bbox[0]
         draw_m.text((p_x + (s_w - d_w) // 2, p_y + s_h + 5), date_txt, fill=stamp_color, font=f_date)
         
         out = io.BytesIO()
@@ -96,8 +97,9 @@ async def start(m: types.Message):
 
 @dp.message(F.photo)
 async def handle_photo(m: types.Message):
+    # Колдонуучунун сүрөтүн эстеп калуу
     user_states[m.from_user.id] = {'photo': m.photo[-1].file_id}
-    await m.answer("Сураныч, аты-жөнүңүздү жазыңыз (мисалы: Алиев Акыл):")
+    await m.answer("✅ Сүрөт кабыл алынды. Эми аты-жөнүңүздү жазыңыз (мисалы: Каримов А.):")
 
 @dp.message(F.text & ~F.text.startswith('/'))
 async def handle_name(m: types.Message):
@@ -127,7 +129,7 @@ async def approve(c: types.CallbackQuery):
         content = await bot.download_file(file.file_path)
         img, err = add_stamp_and_date(content.read())
         if not err:
-            await bot.send_photo(p['user_id'], photo=types.BufferedInputFile(img.read(), filename="res.jpg"), caption="✅ Планыңыз кабыл алынды!")
+            await bot.send_photo(p['user_id'], photo=types.BufferedInputFile(img.read(), filename="res.jpg"), caption="✅ Сиздин планыңыз кабыл алынды!")
             await c.message.edit_caption(caption=f"✅ {p['name']} - План кабыл алынды.")
         del pending_plans[pid]
 

@@ -1,4 +1,5 @@
 aiogram
-Pillow
+pillow
 gspread
 google-auth
+requests

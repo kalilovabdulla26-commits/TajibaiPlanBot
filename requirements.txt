@@ -3,3 +3,4 @@ pillow
 gspread
 google-auth
 requests
+asyncpg
